@@ -1,14 +1,18 @@
-/*--------------------------------------------------------------------------
- * Class DelaunayTri
+package tipl.ccgeom;
+/*----------------------------------------------------------------------------
+ * Class ConvexHull3D
  *
- * Computes DelaunayTriangulation of points in 2D
- * This code is described in "Computational Geometry in C",
- * It is not written to be comprehensible without the
- * explanation in that book.
+ * Application for computing convex hull of points in 3D.
  *---------------------------------------------------------------------------*/
 import java.awt.*;
 
-public class DelaunayTri {
+import tipl.ccgeom.cFaceList.cFace;
+import tipl.ccgeom.cFaceList.cFaceBasic;
+import tipl.util.D3int;
+
+import java.util.List;
+
+public class ConvexHull3D {
   /* Define flags */
   private static final boolean ONHULL = true;
   private static final boolean REMOVED = true;
@@ -16,53 +20,106 @@ public class DelaunayTri {
   private static final boolean PROCESSED = true;
   private static final int SAFE = 1000000;
 
-  private boolean debug;
-  private boolean check;
-  boolean toDraw;
-  private cVertexList list;
-  private cEdgeList elist;
-  private cFaceList flist;
+  private final boolean debug=false;  
+  private final boolean verbose=false;
+  private boolean check=false;  
+  boolean toDraw=true;
+  final protected cVertexList list;
+  final protected cEdgeList elist=new cEdgeList();
+  final protected cFaceList flist=new cFaceList();
+  // Begin Kevin Code
+  /**
+   * Create a Hull from a D3 list of points (an easy output from a shape object)
+   * @param inList the list of points in the object
+   * @return
+   */
+  public static ConvexHull3D HullFromD3List(List<D3int> inList) {
+	 return new ConvexHull3D(new cVertexList(inList));
+  }
+  public static interface AdaptiveHull {
+	  public boolean addPoint(D3int curPoint);
+	  public List<cFaceBasic> getFaces();
+	  public double getArea();
+  }
+  public static AdaptiveHull createAdaptiveHull() {
+	  final ConvexHull3D hull = new ConvexHull3D(); 
+	  return new AdaptiveHull() {
+		  boolean allEmpty=true;
+		boolean freshPoints = true;
+		
+		@Override
+		public boolean addPoint(D3int curPoint) {
+			cVertex cVx = new cVertex(curPoint.x,curPoint.y,curPoint.z);
+			
+			if (allEmpty) {
+				hull.list.InsertBeforeHead(cVx);
+				allEmpty=true;
+				return freshPoints;
+			} else {
+				
+			}
+			freshPoints=freshPoints || hull.AddOne(cVx);
+			return freshPoints;
+		}
+		
+		protected void doUpdate() {
+			if (freshPoints) {
+				hull.ReadVertices();
+				boolean doConstruct = hull.DoubleTriangle();
+				if (doConstruct) hull.ConstructHull();
+				freshPoints=false;
+			} 
+		}
+		
+		@Override
+		public List<cFaceBasic> getFaces() { doUpdate();return hull.getFaces(); }
 
-  DelaunayTri()
-  {
-    this.list = list;
-    elist = new cEdgeList();
-    flist = new cFaceList();
-    debug = toDraw = false;
-    check = false;
+		@Override
+		public double getArea() { doUpdate();return hull.getArea(); }
+		  
+	  };
+  }
+  
+  public cEdgeList getEdges() {
+	  return elist;
+  }
+  public List<cFaceBasic> getFaces() {
+	  return flist.toList();
+  }
+  public double getArea() {
+	  return flist.totalArea();
+  }
+  
+  private ConvexHull3D() {
+	  
+	  this.list=new cVertexList(); // wont be using this variable and wont execute
+  }
+  // End Kevin Code
+  private ConvexHull3D(cVertexList inlist) {
+    this.list=inlist;
+    execute();
+  }
+  private void execute() {
+	    ReadVertices();
+	    if(verbose) System.out.println("Data was accepted");
+	    if(verbose) list.PrintVertices3D();
+	    System.out.println("Calculating convex hull...");
+
+	    if (DoubleTriangle()) {
+	      toDraw = true;
+	      ConstructHull();
+	      if(debug) Print();
+	     
+	    }
   }
 
-  public void Start(cVertexList listOld)
+  public void ReadVertices() 
   {
-    this.list = new cVertexList();
-    listOld.ListCopy(this.list);
-    ReadVertices();
-    if (DoubleTriangle()) {
-      toDraw = true;
-      ConstructHull();
-      LowerFaces();
-      Print();
-    }
-  }
-
-  public void ClearDelaunay()
-  {
-    elist.ClearEdgeList();
-    flist.ClearFaceList();
-    check = debug = toDraw = false;
-  }
-
-  /*---------------------------------------------------------------------
-    ReadVertices: Raises vertices to 3D and checks their coordinates.  
-    ---------------------------------------------------------------------*/
-  public void ReadVertices()
-  {
-    int vnum = 0;
     cVertex v = list.head;
+    int vnum = 0;
     do {
-      v.ResetVertex3D();
       v.vnum = vnum++;
-      if (( Math.abs(v.v.x) > SAFE ) || ( Math.abs(v.v.y) > SAFE ) 
+            if (( Math.abs(v.v.x) > SAFE ) || ( Math.abs(v.v.y) > SAFE ) 
 	  || ( Math.abs(v.v.z) > SAFE ) ) {
 	System.out.println("Coordinate of vertex below might be too large...");
 	v.PrintVertex3D(vnum);
@@ -71,27 +128,8 @@ public class DelaunayTri {
     } while ( v != list.head );
   }
 
-  private void LowerFaces()
-  {
-    cFace f = flist.head;
-    /*int   z;*/
-    int   Flower = 0;   /* Total number of lower faces. */
-    
-    do {
-      /*z = Normz( f );
-	if ( z < 0 ) {*/
-      if ( Normz( f ) < 0 ) {
-	Flower++;
-	f.lower = true;
-	System.out.println("lower face indices: "+f.vertex[0].vnum +", " +
-			   f.vertex[1].vnum +", "+f.vertex[2].vnum );
-      }
-      else f.lower = false;
-      f = f.next;
-    } while ( f != flist.head );
-    System.out.println("A total of "+Flower+" lower faces identified.");
-  }
-  
+
+
   /*---------------------------------------------------------------------
     Print: Prints out the vertices and the faces.  Uses the vnum indices 
     corresponding to the order in which the vertices were input.
@@ -138,7 +176,8 @@ public class DelaunayTri {
  
     System.out.println("\nVertices:\tV = "+ V);
     System.out.println("index:\tx\ty\tz");
-    do {                                 
+    
+    if (debug) do {                                 
       System.out.println( v.vnum+":\t"+v.v.x+"\t"+v.v.y+"\t"+v.v.z+"");
       System.out.println("newpath");
       System.out.println(v.v.x+"\t"+v.v.y+" 2 0 360 arc");
@@ -155,7 +194,7 @@ public class DelaunayTri {
     } while ( f  != flist.head );
     System.out.println("\nFaces:\tF = "+F);
     System.out.println("Visible faces only:");
-    do {           
+    if (debug) do {           
       /* Print face only if it is lower */
       if ( f. lower )
 	{
@@ -173,7 +212,7 @@ public class DelaunayTri {
     /* prints a list of all faces */
     System.out.println("List of all faces:");
     System.out.println("\tv0\tv1\tv2\t(vertex indices)");
-    do {
+    if(debug) do {
       System.out.println("\t"+f.vertex[0].vnum+
 			 "\t"+f.vertex[1].vnum+
 			 "\t"+f.vertex[2].vnum);
@@ -381,13 +420,13 @@ public class DelaunayTri {
     dy = p.v.y;
     dz = p.v.z;
     
-    bxdx = bx-dx;
-    bydy = by-dy;
-    bzdz = bz-dz;
-    cxdx = cx-dx;
-    cydy = cy-dy;
-    czdz = cz-dz;
-    vol  = (az-dz) * (bxdx*cydy - bydy*cxdx)
+    bxdx=bx-dx;
+    bydy=by-dy;
+    bzdz=bz-dz;
+    cxdx=cx-dx;
+    cydy=cy-dy;
+    czdz=cz-dz;
+    vol =   (az-dz) * (bxdx*cydy - bydy*cxdx)
       + (ay-dy) * (bzdz*cxdx - bxdx*czdz)
       + (ax-dx) * (bydy*czdz - bzdz*cydy);
     
@@ -403,10 +442,10 @@ public class DelaunayTri {
   /*---------------------------------------------------------------------*/
   private int  Volumei( cFace f, cVertex p )
   {
-    int    vol;
-    int    ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz;
+    int 	   vol;
+    int 	   ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz;
     int	   bxdx, bydy, bzdz, cxdx, cydy, czdz;
-    double vold;
+    double  vold;
     int	   i;
     
     ax = f.vertex[0].v.x;
@@ -555,35 +594,35 @@ public class DelaunayTri {
     order).  It returns a pointer to the face.
     ---------------------------------------------------------------------*/
   private cFace   MakeFace( cVertex v0, cVertex v1, cVertex v2, cFace fold )
-  {
-    cFace  f;
-    cEdge  e0, e1, e2;
-    
-    /* Create edges of the initial triangle. */
-    if( fold == null ) {
-      e0 = elist.MakeNullEdge();
-      e1 = elist.MakeNullEdge();
-      e2 = elist.MakeNullEdge();
+    {
+      cFace  f;
+      cEdge  e0, e1, e2;
+      
+      /* Create edges of the initial triangle. */
+      if( fold == null ) {
+	e0 = elist.MakeNullEdge();
+	e1 = elist.MakeNullEdge();
+	e2 = elist.MakeNullEdge();
+      }
+      else { /* Copy from fold, in reverse order. */
+	e0 = fold.edge[2];
+	e1 = fold.edge[1];
+	e2 = fold.edge[0];
+      }
+      e0.endpts[0] = v0;              e0.endpts[1] = v1;
+      e1.endpts[0] = v1;              e1.endpts[1] = v2;
+      e2.endpts[0] = v2;              e2.endpts[1] = v0;
+      
+      /* Create face for triangle. */
+      f = flist.MakeNullFace();
+      f.edge[0]   = e0;  f.edge[1]   = e1; f.edge[2]   = e2;
+      f.vertex[0] = v0;  f.vertex[1] = v1; f.vertex[2] = v2;
+      
+      /* Link edges to face. */
+      e0.adjface[0] = e1.adjface[0] = e2.adjface[0] = f;
+      
+      return f;
     }
-    else { /* Copy from fold, in reverse order. */
-      e0 = fold.edge[2];
-      e1 = fold.edge[1];
-      e2 = fold.edge[0];
-    }
-    e0.endpts[0] = v0;              e0.endpts[1] = v1;
-    e1.endpts[0] = v1;              e1.endpts[1] = v2;
-    e2.endpts[0] = v2;              e2.endpts[1] = v0;
-    
-    /* Create face for triangle. */
-    f = flist.MakeNullFace();
-    f.edge[0]   = e0;  f.edge[1]   = e1; f.edge[2]   = e2;
-    f.vertex[0] = v0;  f.vertex[1] = v1; f.vertex[2] = v2;
-    
-    /* Link edges to face. */
-    e0.adjface[0] = e1.adjface[0] = e2.adjface[0] = f;
-    
-    return f;
-  }
   
   /*---------------------------------------------------------------------
     CleanUp goes through each data structure list and clears all
@@ -790,7 +829,7 @@ public class DelaunayTri {
     ---------------------------------------------------------------------*/
   private void	Convexity()
   {
-   cFace    f;
+    cFace    f;
     cVertex  v;
     int               vol;
     
@@ -966,65 +1005,4 @@ public class DelaunayTri {
     x = y;
     y = t;
   } 
-
-  /*---------------------------------------------------------------------
-    DrawDelaunayTri: Draws the vertices and the faces.  Uses the vnum indices 
-    corresponding to the order in which the vertices were input.
-    ---------------------------------------------------------------------*/
-  public void	DrawDelaunayTri(Graphics g, int w, int h)
-  {
-    /* Pointers to vertices, edges, faces. */
-    cVertex  v;
-    cEdge    e;
-    cFace    f;
-    /* Counters for Euler's formula. */
-    int 	V = 0, E = 0 , F = 0;
-    /* Note: lowercase==pointer, uppercase==counter. */
-    
-    /* Vertices. */
-    v = list.head;
-    do {                                 
-      if( v.mark ) V++;           
-      v = v.next;
-    } while ( v != list.head );
- 
-    /* Faces. */
-    /* visible faces are printed as PS output */
-    f = flist.head;
-    do {
-      ++F;                              
-      f  = f .next;
-    } while ( f  != flist.head );
-    System.out.println("\nFaces:\tF = "+F);
-    System.out.println("Visible faces only:");
-    do {           
-      /* Print face only if it is lower */
-      if ( f. lower )
-      {
-	g.setColor(Color.blue);
-	if(flist.n >= 2) {
-	  g.drawLine(f.vertex[0].v.x, f.vertex[0].v.y,
-		     f.vertex[1].v.x, f.vertex[1].v.y);
-	  g.drawLine(f.vertex[1].v.x, f.vertex[1].v.y,
-		     f.vertex[2].v.x, f.vertex[2].v.y);
-	  g.drawLine(f.vertex[2].v.x, f.vertex[2].v.y,
-		     f.vertex[0].v.x, f.vertex[0].v.y);
-	}
-      }
-      f = f.next;
-    } while ( f != flist.head );    
-
-    System.out.println("\nVertices:\tV = "+ V);
-    System.out.println("index:\tx\ty\tz");
-    do {
-      g.setColor(Color.black);
-      Font font = new Font("Helvetica", Font.PLAIN, 12);
-      g.setFont(font);
-      g.drawString(Integer.toString(v.vnum), 
-		   v.v.x - (int)1.5*w, v.v.y - (int)1.5*h);
-      g.setColor(Color.blue);
-      g.fillOval(v.v.x - (int)(w/2), v.v.y - (int)(h/2), w, h);
-      v = v.next;
-    } while ( v != list.head );  
-  }
 }

@@ -1,3 +1,4 @@
+package tipl.ccgeom;
 /*------------------------------------------------------------------
 class cVertex.
 
@@ -12,6 +13,9 @@ class cVertex {
     
   cVertex prev, next;
   cPointi v;
+  public cPointi getVec() {
+	  return v;
+  }
   boolean ear = false;
   int vnum;
   cEdge duplicate;
@@ -66,6 +70,10 @@ class cVertex {
   public void PrintVertex3D(int k)
   {
     System.out.print("V"+k+" = ("+ v.x + ", " + v.y + ", " + v.z + "); ");
+  }
+  @Override
+  public String toString() {
+	  return "("+ v.x + ", " + v.y + ", " + v.z + ")";
   }
 } 
 
